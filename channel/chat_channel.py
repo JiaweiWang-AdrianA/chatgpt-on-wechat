@@ -95,22 +95,34 @@ class ChatChannel(Channel):
                 return None
 
             nick_name_black_list = conf().get("nick_name_black_list", [])
+            nick_name_grey_list = conf().get("nick_name_grey_list", [])
             if context.get("isgroup", False):  # 群聊
                 # 校验关键字
-                match_prefix = check_prefix(content, conf().get("group_chat_prefix"))
                 match_contain = check_contain(content, conf().get("group_chat_keyword"))
                 flag = False
+                # my select bots 
+                bot_name, bot_id = select_bot_type(content, conf().get("bot_id2names", {}))
+                #先确定bots种类，如果没有的话再看有没有bot前缀
+                match_prefix = bot_name if bot_name else check_prefix(content, conf().get("group_chat_prefix", [""]))
+                # match_prefix = check_prefix(content, conf().get("group_chat_prefix"))
                 if context["msg"].to_user_id != context["msg"].actual_user_id:
                     if match_prefix is not None or match_contain is not None:
                         flag = True
                         if match_prefix:
                             content = content.replace(match_prefix, "", 1).strip()
+                            context["bot_id"] = bot_id
+
                     if context["msg"].is_at:
                         nick_name = context["msg"].actual_user_nickname
                         if nick_name and nick_name in nick_name_black_list:
                             # 黑名单过滤
                             logger.warning(f"[WX] Nickname {nick_name} in In BlackList, ignore")
                             return None
+                        #my grey list
+                        if nick_name and nick_name in nick_name_grey_list:
+                            # 灰名单特殊处理
+                            logger.warning(f"[WX] Nickname {nick_name} in In GreyList, xixixi..")
+                            context["grey_flag"] = True
 
                         logger.info("[WX]receive group at")
                         if not conf().get("group_at_off", False):
@@ -136,14 +148,25 @@ class ChatChannel(Channel):
                     # 黑名单过滤
                     logger.warning(f"[WX] Nickname '{nick_name}' in In BlackList, ignore")
                     return None
+                if nick_name and nick_name in nick_name_grey_list:
+                    # 灰名单特殊处理
+                    logger.warning(f"[WX] Nickname {nick_name} in In GreyList, xixixi..")
+                    context["grey_flag"] = True
 
-                match_prefix = check_prefix(content, conf().get("single_chat_prefix", [""]))
+                
+                # my select bots 
+                bot_name, bot_id = select_bot_type(content, conf().get("bot_id2names", {}))
+                #先确定bots种类，如果没有的话再看有没有bot前缀
+                match_prefix = bot_name if bot_name else check_prefix(content, conf().get("single_chat_prefix", [""]))
                 if match_prefix is not None:  # 判断如果匹配到自定义前缀，则返回过滤掉前缀+空格后的内容
                     content = content.replace(match_prefix, "", 1).strip()
-                elif context["origin_ctype"] == ContextType.VOICE:  # 如果源消息是私聊的语音消息，允许不匹配前缀，放宽条件
-                    pass
+                    context["bot_id"] = bot_id
+                # elif context["origin_ctype"] == ContextType.VOICE:  # 如果源消息是私聊的语音消息，允许不匹配前缀，放宽条件
+                #     pass
                 else:
                     return None
+
+                
             content = content.strip()
             img_match_prefix = check_prefix(content, conf().get("image_create_prefix"))
             if img_match_prefix:
@@ -252,9 +275,13 @@ class ChatChannel(Channel):
                     if context.get("isgroup", False):
                         if not context.get("no_need_at", False):
                             reply_text = "@" + context["msg"].actual_user_nickname + "\n" + reply_text.strip()
-                        reply_text = conf().get("group_chat_reply_prefix", "") + reply_text + conf().get("group_chat_reply_suffix", "")
+                        reply_prefix = '[Bot:' + context["bot_id"] + ']' if context["bot_id"] else conf().get("group_chat_reply_prefix", "")
+                        reply_text = reply_prefix + "\n" + reply_text + conf().get("group_chat_reply_suffix", "")
+                        # reply_text = conf().get("group_chat_reply_prefix", "") + reply_text + conf().get("group_chat_reply_suffix", "")
                     else:
-                        reply_text = conf().get("single_chat_reply_prefix", "") + reply_text + conf().get("single_chat_reply_suffix", "")
+                        reply_prefix = '[Bot:' + context["bot_id"] + ']' if context["bot_id"] else conf().get("single_chat_reply_prefix", "")
+                        reply_text = reply_prefix + "\n" + reply_text + conf().get("single_chat_reply_suffix", "")
+                        # reply_text = conf().get("single_chat_reply_prefix", "") + reply_text + conf().get("single_chat_reply_suffix", "")
                     reply.content = reply_text
                 elif reply.type == ReplyType.ERROR or reply.type == ReplyType.INFO:
                     reply.content = "[" + str(reply.type) + "]\n" + reply.content
@@ -390,3 +417,18 @@ def check_contain(content, keyword_list):
         if content.find(ky) != -1:
             return True
     return None
+
+
+def select_bot_type(content, bots_id2names):
+    for bot_id, names in bots_id2names.items():
+        for name in names:
+            if content.startswith(name):
+                return name, bot_id
+    return None, None
+
+
+
+
+
+
+

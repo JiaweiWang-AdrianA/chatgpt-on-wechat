@@ -16,7 +16,7 @@ available_setting = {
     "open_ai_api_base": "https://api.openai.com/v1",
     "proxy": "",  # openai使用的代理
     # chatgpt模型， 当use_azure_chatgpt为true时，其名称为Azure上model deployment名称
-    "model": "gpt-3.5-turbo",  # 还支持 gpt-4, gpt-4-turbo, wenxin, xunfei, qwen
+    "model": "gpt-3.5-turbo",  # 还支持 gpt-3.5-turbo, gpt-4, gpt-4-turbo, wenxin, xunfei
     "use_azure_chatgpt": False,  # 是否使用azure的chatgpt
     "azure_deployment_id": "",  # azure 模型部署名称
     "azure_api_version": "",  # azure api版本
@@ -44,7 +44,7 @@ available_setting = {
     # chatgpt会话参数
     "expires_in_seconds": 3600,  # 无操作会话的过期时间
     # 人格描述
-    "character_desc": "你是ChatGPT, 一个由OpenAI训练的大型语言模型, 你旨在回答并解决人们的任何问题，并且可以使用多种语言与人交流。",
+    "character_desc": "You are ChatGPT.",
     "conversation_max_tokens": 1000,  # 支持上下文记忆的最多字符数
     # chatgpt限流配置
     "rate_limit_chatgpt": 20,  # chatgpt的调用频率限制
@@ -67,12 +67,6 @@ available_setting = {
     # claude 配置
     "claude_api_cookie": "",
     "claude_uuid": "",
-    # 通义千问API, 获取方式查看文档 https://help.aliyun.com/document_detail/2587494.html
-    "qwen_access_key_id": "",
-    "qwen_access_key_secret": "",
-    "qwen_agent_key": "",
-    "qwen_app_id": "",
-    "qwen_node_id": "",  # 流程编排模型用到的id，如果没有用到qwen_node_id，请务必保持为空字符串
     # wework的通用配置
     "wework_smart": True,  # 配置wework是否使用已登录的企业微信，False为多开
     # 语音设置
@@ -147,6 +141,12 @@ available_setting = {
     "linkai_api_key": "",
     "linkai_app_code": "",
     "linkai_api_base": "https://api.link-ai.chat",  # linkAI服务地址，若国内无法访问或延迟较高可改为 https://api.link-ai.tech
+
+    #my setting: different bots
+    "bots_flag": True,
+    "bot_id2names": {"basic": ["bot", "Abot"]},
+    "bot_id2prompts": {},
+    "nick_name_grey_list": [""]
 }
 
 
@@ -211,14 +211,27 @@ def load_config():
     global config
     config_path = "./config.json"
     if not os.path.exists(config_path):
-        logger.info("配置文件不存在，将使用config-template.json模板")
+        logger.info("config.json文件不存在，将使用config-template.json模板")
         config_path = "./config-template.json"
-
     config_str = read_file(config_path)
     logger.debug("[INIT] config str: {}".format(config_str))
-
     # 将json字符串反序列化为dict类型
     config = Config(json.loads(config_str))
+
+    # load different bots
+    if config["bots_flag"]:
+        prompts_path = "./bot/prompts.json"
+        if not os.path.exists(config_path):
+            logger.info("prompts.json文件不存在，将使用prompts-template.json模板")
+            config_path = "./bot/prompts-template.json"
+        prompts_str = read_file(prompts_path)
+        logger.debug("[INIT] prompts str: {}".format(prompts_str))
+        bot_prompts = json.loads(prompts_str)
+        config["bot_id2names"], config["bot_id2prompts"] = {}, {}
+        for k,v in bot_prompts.items():
+            config["bot_id2names"][k] = v["names"]
+            config["bot_id2prompts"][k] = v["prompt"]
+
 
     # override config with environment variables.
     # Some online deployment platforms (e.g. Railway) deploy project from github directly. So you shouldn't put your secrets like api key in a config file, instead use environment variables to override the default config.

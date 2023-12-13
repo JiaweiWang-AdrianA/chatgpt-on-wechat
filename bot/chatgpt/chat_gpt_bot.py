@@ -17,6 +17,7 @@ from common.token_bucket import TokenBucket
 from config import conf, load_config
 
 
+
 # OpenAI对话模型API (可用)
 class ChatGPTBot(Bot, OpenAIImage):
     def __init__(self):
@@ -50,6 +51,8 @@ class ChatGPTBot(Bot, OpenAIImage):
 
             session_id = context["session_id"]
             reply = None
+
+            # reset session
             clear_memory_commands = conf().get("clear_memory_commands", ["#清除记忆"])
             if query in clear_memory_commands:
                 self.sessions.clear_session(session_id)
@@ -62,8 +65,35 @@ class ChatGPTBot(Bot, OpenAIImage):
                 reply = Reply(ReplyType.INFO, "配置已更新")
             if reply:
                 return reply
+
             session = self.sessions.session_query(query, session_id)
             logger.debug("[CHATGPT] session query={}".format(session.messages))
+
+
+            # define session's prompt
+            if "grey_flag" in context and context["grey_flag"]: # change bot's prompt for greylist
+                try:
+                    sys_prompt = conf().get("bot_id2prompts", {})["grey"]
+                    if not sys_prompt == session.system_prompt:
+                        session.reset_system_prompt(sys_prompt)
+                        print("Reset a bot for GreyList:", sys_prompt)
+                        # print("messages:", session.messages)
+                except:
+                    print("no \'grey\' in bot_id2prompts.")
+
+            elif context["bot_id"]: # change bot's prompt for bot_id
+                bot_id = context["bot_id"]
+                try:
+                    sys_prompt = conf().get("bot_id2prompts", {})[bot_id]
+                    if not sys_prompt == session.system_prompt:
+                        session.reset_system_prompt(sys_prompt)
+                        print("Reset a bot for this section:", sys_prompt)
+                        # print("messages:", session.messages)
+                except:
+                    print("no \'{}\' in bot_id2prompts.".format(bot_id))
+
+            # print("session.system_prompt:", session.system_prompt)
+            print("session.messages:", session.messages)
 
             api_key = context.get("openai_api_key")
             model = context.get("gpt_model")
@@ -76,6 +106,14 @@ class ChatGPTBot(Bot, OpenAIImage):
             #     return self.reply_text_stream(query, new_query, session_id)
 
             reply_content = self.reply_text(session, api_key, args=new_args)
+            # test
+            # print("session_id:", session_id)
+            # print("query:", query)
+            # reply_content = {
+            #     "total_tokens": 1,
+            #     "completion_tokens": 1,
+            #     "content": "okkkk",
+            # }
             logger.debug(
                 "[CHATGPT] new_query={}, session_id={}, reply_cont={}, completion_tokens={}".format(
                     session.messages,
@@ -92,6 +130,7 @@ class ChatGPTBot(Bot, OpenAIImage):
             else:
                 reply = Reply(ReplyType.ERROR, reply_content["content"])
                 logger.debug("[CHATGPT] reply {} used 0 tokens.".format(reply_content))
+
             return reply
 
         elif context.type == ContextType.IMAGE_CREATE:
@@ -105,6 +144,7 @@ class ChatGPTBot(Bot, OpenAIImage):
         else:
             reply = Reply(ReplyType.ERROR, "Bot不支持处理{}类型的消息".format(context.type))
             return reply
+
 
     def reply_text(self, session: ChatGPTSession, api_key=None, args=None, retry_count=0) -> dict:
         """
@@ -148,9 +188,8 @@ class ChatGPTBot(Bot, OpenAIImage):
                     time.sleep(10)
             elif isinstance(e, openai.error.APIConnectionError):
                 logger.warn("[CHATGPT] APIConnectionError: {}".format(e))
+                need_retry = False
                 result["content"] = "我连接不到你的网络"
-                if need_retry:
-                    time.sleep(5)
             else:
                 logger.exception("[CHATGPT] Exception: {}".format(e))
                 need_retry = False

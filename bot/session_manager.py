@@ -17,6 +17,12 @@ class Session(object):
         system_item = {"role": "system", "content": self.system_prompt}
         self.messages = [system_item]
 
+    def reset_system_prompt(self, system_prompt):
+        self.system_prompt = system_prompt
+        system_item = {"role": "system", "content": self.system_prompt}
+        final_message = self.messages.pop()
+        self.messages = [system_item, final_message]
+
     def set_system_prompt(self, system_prompt):
         self.system_prompt = system_prompt
         self.reset()
